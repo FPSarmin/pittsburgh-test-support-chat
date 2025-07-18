@@ -44,7 +44,6 @@ async def websocket_endpoint(
             logger.info(f'Sent message: {json.dumps(message_data, default=str)}')
 
             await chats_mongo_client.add_message(chat_id, data.content, data.sender_id, user_type)
-
             # Рассылаем всем участникам чата кроме отправляющего
             await connectionManager.broadcast(message_data, chat_id, user_id)
 
