@@ -16,11 +16,6 @@ class ChatsMongoClient:
         self.collection = self.db['chats']
         self.logger = logging.getLogger('uvicorn.error')
 
-    @staticmethod
-    async def get_db():
-        db = ChatsMongoClient()
-        return db
-
     async def create_chat(self):
         chat = ChatModel()
         try:
@@ -54,4 +49,4 @@ class ChatsMongoClient:
             {'chat_id': chat_id}, {"$set": chat.model_dump()}, upsert=True)
 
 
-
+chats_mongo_client = ChatsMongoClient()
