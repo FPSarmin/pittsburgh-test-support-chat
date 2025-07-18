@@ -1,11 +1,9 @@
 # Test your FastAPI endpoints
 
-GET http://127.0.0.1:8000/
+POST http://127.0.0.1:8000/chats
 Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+POST http://127.0.0.1:8000/chats/687a5d33f7b1855f43eeb3cb/messages
 Accept: application/json
-
-###

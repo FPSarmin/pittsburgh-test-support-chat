@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            min-width: 300px;
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .operator-message {
+            background-color: #e8f5e9;
+        }
+        .system-message {
+            background-color: #f5f5f5;
+            font-style: italic;
+            text-align: center;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Chat</h1>
+
+    <div class="container">
+        <div class="panel" id="connectionPanel">
+            <h2>Подключение к чату</h2>
+            <input type="text" id="chatId" placeholder="ID чата" value="chat1">
+            <input type="text" id="userId" placeholder="Ваш ID">
+
+            <select id="userType">
+                <option value="user">Пользователь</option>
+                <option value="operator">Оператор</option>
+            </select>
+
+            <button id="connectBtn">Подключиться</button>
+        </div>
+
+        <div class="panel hidden" id="chatPanel">
+            <h2>Чат: <span id="currentChatId"></span></h2>
+            <div id="messages"></div>
+
+            <div>
+                <input type="text" id="messageInput" placeholder="Введите сообщение...">
+                <button id="sendBtn">Отправить</button>
+                <button id="disconnectBtn">Отключиться</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+        const connectionPanel = document.getElementById('connectionPanel');
+        const chatPanel = document.getElementById('chatPanel');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const currentChatIdSpan = document.getElementById('currentChatId');
+
+        let socket = null;
+        let currentChatId = '';
+        let currentUserId = '';
+        let currentUserType = '';
+
+        function debugLog(message, data = null) {
+            console.log(`[DEBUG] ${message}`, data);
+
+            const logElement = document.createElement('div');
+            logElement.style.color = '#666';
+            logElement.style.fontSize = '0.8em';
+            logElement.style.marginTop = '5px';
+            logElement.style.padding = '5px';
+            logElement.style.borderTop = '1px dashed #eee';
+
+            logElement.textContent = `[DEBUG] ${message}`;
+            if (data) {
+                logElement.textContent += `: ${JSON.stringify(data)}`;
+            }
+
+            messagesDiv.appendChild(logElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        connectBtn.addEventListener('click', () => {
+            currentChatId = document.getElementById('chatId').value;
+            currentUserId = document.getElementById('userId').value;
+            currentUserType = document.getElementById('userType').value;
+
+            if (!currentChatId || !currentUserId) {
+                alert('Введите ID чата и ваш ID');
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}/ws/${currentChatId}?user_type=${currentUserType}&user_id=${currentUserId}`;
+
+            debugLog('Connecting to WebSocket', {
+                url: wsUrl,
+                chatId: currentChatId,
+                userId: currentUserId,
+                userType: currentUserType
+            });
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                debugLog('WebSocket connection opened');
+                connectionPanel.classList.add('hidden');
+                chatPanel.classList.remove('hidden');
+                currentChatIdSpan.textContent = currentChatId;
+                addSystemMessage(`Вы подключены как ${currentUserType}`);
+            };
+
+            socket.onmessage = (event) => {
+                debugLog('Raw message received', event.data);
+                try {
+                    const message = JSON.parse(event.data);
+                    debugLog('Parsed message', message);
+                    handleIncomingMessage(message);
+                } catch (e) {
+                    console.error('Ошибка разбора сообщения:', e);
+                    debugLog('JSON parse error', e.message);
+                    addSystemMessage('Ошибка формата сообщения');
+                }
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                debugLog('WebSocket error', error);
+                addSystemMessage('Ошибка соединения');
+            };
+
+            socket.onclose = (event) => {
+                debugLog('WebSocket connection closed', {
+                    code: event.code,
+                    reason: event.reason,
+                    wasClean: event.wasClean
+                });
+                connectionPanel.classList.remove('hidden');
+                chatPanel.classList.add('hidden');
+                addSystemMessage('Соединение закрыто');
+            };
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        function sendMessage() {
+            const content = messageInput.value.trim();
+            if (content && socket && socket.readyState === WebSocket.OPEN) {
+                const message = {
+                    type: "message",
+                    sender_id: currentUserId,
+                    content: content
+                };
+
+                debugLog('Sending message', message);
+                socket.send(JSON.stringify(message));
+                messageInput.value = '';
+
+                displayMessage({
+                    sender_id: currentUserId,
+                    sender_type: currentUserType,
+                    content: content,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        function handleIncomingMessage(data) {
+            debugLog('Handling incoming message', data);
+
+            if (data.type === "system") {
+                debugLog('System message', data);
+                addSystemMessage(data.content);
+                return;
+            }
+
+            if (data.type === "message") {
+                debugLog('Regular message', data);
+
+                const messageData = {
+                    sender_id: data.sender_id || "Неизвестный",
+                    sender_type: data.sender_type || 'user',
+                    content: data.content || "",
+                    timestamp: data.timestamp || new Date().toISOString()
+                };
+
+                debugLog('Processed message data', messageData);
+                displayMessage(messageData);
+            } else {
+                debugLog('Unknown message type', data);
+            }
+        }
+
+        function displayMessage(data) {
+            debugLog('Displaying message', data);
+
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+
+            const senderId = data.sender_id || "Неизвестный";
+            const senderType = data.sender_type || 'user';
+            const isCurrentUser = senderId === currentUserId;
+
+            debugLog('Message details', {
+                senderId,
+                senderType,
+                isCurrentUser,
+                currentUserId
+            });
+
+            messageDiv.classList.add(
+                senderType === 'user' ? 'user-message' : 'operator-message'
+            );
+
+            if (isCurrentUser) {
+                messageDiv.innerHTML = `
+                    <strong>Вы (${senderType}):</strong><br>
+                    ${data.content}
+                    <div class="timestamp">${formatTimestamp(data.timestamp)}</div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <strong>${senderId} (${senderType}):</strong><br>
+                    ${data.content}
+                    <div class="timestamp">${formatTimestamp(data.timestamp)}</div>
+                `;
+            }
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        disconnectBtn.addEventListener('click', () => {
+            debugLog('Disconnecting manually');
+            if (socket) {
+                socket.close();
+            }
+        });
+
+        function addSystemMessage(text) {
+            debugLog('Adding system message', text);
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', 'system-message');
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } catch (e) {
+                return 'invalid time';
+            }
+        }
+    </script>
+</body>
+</html>
