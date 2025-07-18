@@ -24,6 +24,10 @@ class ChatModelForApiRequest(BaseModel):
     content: str = Field(alias="content")
 
 
+class ChatMessagesModel(BaseModel):
+    messages: List[MessageModel] = Field(default_factory=lambda: [])
+
+
 class CreatedChatIdModel(BaseModel):
     chat_id: str = Field(alias="chat_id")
 
