@@ -29,6 +29,7 @@ async def websocket_endpoint(
             content={"message": "Ошибка запроса", "detail": "Не существует чата с данным chat_id"},
         )
     curr_user_type = user_type
+    await chats_mongo_client.add_participant(chat_id, user_id, curr_user_type)
     await connectionManager.connect(websocket, chat_id, user_id)
     try:
         while True:

@@ -34,7 +34,13 @@ class ChatsMongoClient:
         chat_id = chat.chat_id
         chat.last_update_timestamp = datetime.datetime.now()
         await self.collection.update_one(
-            {'chat_id': chat_id}, {"$set": chat}, upsert=True)
+            {'chat_id': chat_id}, {"$set": chat.model_dump()}, upsert=True)
+
+    async def add_participant(self, chat_id: str, sender_id: str, sender_type: str):
+        chat = await self.get_chat(chat_id)
+        if sender_id not in chat.participants:
+            chat.participants[sender_id] = sender_type
+        await self.add_or_update_chat(chat)
 
 
     async def add_message(self, chat_id: str, message: str, sender_id: str, sender_type: str):

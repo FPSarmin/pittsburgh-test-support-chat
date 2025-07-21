@@ -45,5 +45,5 @@ class ConnectionManager:
                 if exclude_user_id and user_id != exclude_user_id:
                     message_string = json.dumps(message, default=str)
                     await connection.send_text(message_string)
-        if not is_op_in_chat:
+        if not is_op_in_chat and message['type'] != 'system':
             await fb_client.send_push_notification(chat_id, message)
